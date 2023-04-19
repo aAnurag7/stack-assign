@@ -8,28 +8,31 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 
 contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgradeable {
+
     uint256 public start;
     uint256 public end;
-    struct StackerDetail{
-        uint256 amount;
+    uint256 updatedBlockNumber;
+    struct StakerDetail{
         uint256 blockNumber;
         address ERC20Contract;
     }
-    address contractOwner;
-    IERC20Upgradeable public rewardToken;
-    bytes32 public constant DEFAULT_ROLE = keccak256("DEFAULT_ROLE");
+    bytes32 constant DEFAULT_ROLE = keccak256("DEFAULT_ROLE");
     mapping (address => uint256) reward;
     mapping (address => uint256) balance;
-    mapping (address => StackerDetail) stacker;
+    mapping (address => StakerDetail) staker;
 
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     EnumerableSetUpgradeable.AddressSet private _whitList;
     
+    /// @dev To check msg.sender able to stake or not
+    modifier checkStakeTime(){
+        require(block.timestamp >= start, "stack time has not start");
+        require(block.timestamp <= end, "stack time has ended");
+        _;
+    }
     /// @notice initialize state once
-    /// @dev it initializes contract owner, rewardToken and setupRole
-    function initialize(address _rewardToken) external initializer {
-        contractOwner = msg.sender;
-        rewardToken = IERC20Upgradeable(_rewardToken);
+    /// @dev it initializes contract owner and setupRole
+    function initialize() external initializer {
          _setupRole(DEFAULT_ROLE, msg.sender);
     }
     
@@ -57,21 +60,51 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
 
     /// @notice user can stake its coins by this stake function
     /// @dev this add user stake amount and contract token address and block number at staking time in stacker
-    function stake(uint256 _amount, address _ERC20) external {
-        require(block.timestamp >= start, "stack time has not start");
-        require(block.timestamp <= end, "stack time has ended");
+    function stake(uint256 _amount, address _ERC20) external checkStakeTime {
         require(_whitList.contains(_ERC20), "token is not white list token");
         balance[msg.sender] += _amount;
-        stacker[msg.sender] = StackerDetail(_amount, block.number, _ERC20);
+        staker[msg.sender] = StakerDetail(block.number, _ERC20);
         IERC20Upgradeable(_ERC20).transferFrom(msg.sender, address(this), _amount);
+
     }
 
-    function withdraw() external {
-        require(balance[msg.sender] != 0, "not haved stacked");
-        address _ERC20 = stacker[msg.sender].ERC20Contract;
+    /// @notice user can withdraw its staked token
+    /// @dev give msg.sender its staked token and update its reward
+    function withdrawStakToken() external {
+        require(balance[msg.sender] != 0, "not have staked");
+        address _ERC20 = staker[msg.sender].ERC20Contract;
         IERC20Upgradeable(_ERC20).transfer(msg.sender, balance[msg.sender]);
-        uint256 rewardAmount = (block.number - stacker[msg.sender].blockNumber)/5;
+        uint256 rewardAmount;
+        if(block.timestamp <= end){
+           rewardAmount = (block.number - staker[msg.sender].blockNumber)/5;
+        }
+        else{
+            rewardAmount = (updatedBlockNumber - staker[msg.sender].blockNumber)/5;
+        }
         reward[msg.sender] = rewardAmount;
+        balance[msg.sender] = 0;
     }
-
+ 
+    /// @notice reward amount of owner
+    /// @param _owner address of owner of reward 
+    /// @return amount of reward owner have
+    function getRewardBalance(address _owner) external view returns(uint256) {
+        return reward[_owner];
+    }
+  
+    /// @notice check _owner is valid to claim reward
+    /// @param _owner address of staker
+    /// @return bool 
+    function check(address _owner) external view returns(bool) {
+        require(block.timestamp > end, "stake period has not ended");
+        require(_whitList.contains(staker[_owner].ERC20Contract), "token is not white list token");
+        return true;
+    }
+    
+    /// @dev only owner can updatedBlockNumber when stake time has ended
+    function updateTimestamp() external {
+        require(hasRole(DEFAULT_ROLE, msg.sender), "Caller is not a owner");
+        require(block.timestamp == end, "stake period has not end");
+        updatedBlockNumber = block.number;
+    }
 }
