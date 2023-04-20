@@ -12,15 +12,14 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
 
     uint256 public start;
     uint256 public end;
-    bytes32 root;
     uint256 updatedBlockNumber;
     struct StakerDetail{
         uint256 blockNumber;
         address ERC20Contract;
     }
     bytes32 constant DEFAULT_ROLE = keccak256("DEFAULT_ROLE");
-    mapping (address => uint256) reward;
-    mapping (address => uint256) balance;
+    mapping (address => uint256) public reward;
+    mapping (address => uint256) public balance;
     mapping (address => StakerDetail) staker;
     mapping (address => bool) claim;
 
@@ -29,8 +28,13 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
     
     /// @dev To check msg.sender able to stake or not
     modifier checkStakeTime(){
-        require(block.timestamp >= start, "stack time has not start");
-        require(block.timestamp <= end, "stack time has ended");
+        if(start !=0){
+            require(block.timestamp >= start, "stake time has not start");
+        }
+        else{
+            revert("stake has not start");
+        }
+        require(block.timestamp <= end, "stake time has ended");
         _;
     }
     /// @notice initialize state once
@@ -101,23 +105,28 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
     function check(address _owner) external view returns(bool) {
         require(block.timestamp > end, "stake period has not ended");
         require(_whitList.contains(staker[_owner].ERC20Contract), "token is not white list token");
-        require(claim[msg.sender], "user in not valid");
+        // require(claim[msg.sender], "user in not valid");
         return true;
     }
     
     /// @dev only owner can updatedBlockNumber when stake time has ended
     function updateTimestamp() external {
         require(hasRole(DEFAULT_ROLE, msg.sender), "Caller is not a owner");
-        require(block.timestamp == end, "stake period has not end");
+        require(block.timestamp >= end, "time is not equal to end");
         updatedBlockNumber = block.number;
     }
 
     function verify(
         bytes32[] memory proof,
-        address addr
+        address addr,
+        bytes32 root
     ) public {
         bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(addr))));
         require(MerkleProof.verify(proof, root, leaf), "Invalid proof");
         claim[addr] = true;
+    }
+
+    function isWhitList(address value) external view returns(bool) {
+        return _whitList.contains(value);
     }
 }
