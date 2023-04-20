@@ -6,11 +6,13 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgradeable {
 
     uint256 public start;
     uint256 public end;
+    bytes32 root;
     uint256 updatedBlockNumber;
     struct StakerDetail{
         uint256 blockNumber;
@@ -20,6 +22,7 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
     mapping (address => uint256) reward;
     mapping (address => uint256) balance;
     mapping (address => StakerDetail) staker;
+    mapping (address => bool) claim;
 
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     EnumerableSetUpgradeable.AddressSet private _whitList;
@@ -98,6 +101,7 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
     function check(address _owner) external view returns(bool) {
         require(block.timestamp > end, "stake period has not ended");
         require(_whitList.contains(staker[_owner].ERC20Contract), "token is not white list token");
+        require(claim[msg.sender], "user in not valid");
         return true;
     }
     
@@ -106,5 +110,14 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
         require(hasRole(DEFAULT_ROLE, msg.sender), "Caller is not a owner");
         require(block.timestamp == end, "stake period has not end");
         updatedBlockNumber = block.number;
+    }
+
+    function verify(
+        bytes32[] memory proof,
+        address addr
+    ) public {
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(addr))));
+        require(MerkleProof.verify(proof, root, leaf), "Invalid proof");
+        claim[addr] = true;
     }
 }
