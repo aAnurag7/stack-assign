@@ -26,10 +26,6 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         proxy: {
           owner: deployer,
           proxyContract: "OpenZeppelinTransparentProxy",
-          execute: {
-            methodName: "init",
-            args: [Staking.address, Coins.address],
-          },
           upgradeIndex: 0,
         },
     });
