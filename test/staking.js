@@ -2,6 +2,11 @@ const { expect } = require("chai");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
 const { json } = require("express/lib/response");
 require("hardhat");
+const {MerkleTree} = require("merkletreejs")
+const keccak256 = require("keccak256")
+const Web3 = require("web3");
+const { add } = require("nodemon/lib/rules");
+const web3 = new Web3();
 
 async function deployFixture() {
   const [owner, addr1, addr2] = await ethers.getSigners();
@@ -119,12 +124,63 @@ describe("Staking contract function", async function () {
     await stake.updateTimestamp();
   });
 
-  it("it should revert if user try to stak before start", async function () {
+  it("it should revert if user try to stake before start", async function () {
     let {stake, token} = await loadFixture(deployFixture);
     await stake.addWhiteList(token.address);
     await token.mint(1000);
     await token.approve(stake.address, 100);
-    await expect(stake.stake(100, token.address)).to.be.revertedWith("stake has not start");
+    await expect(stake.stake(100, token.address)).to.be.revertedWith("stake has not started");
+  });
+  
+  it("it should revert if other than owner try to add token in whiteList", async function () {
+    let {addr1, stake, token} = await loadFixture(deployFixture);
+    await stake.startStack(2);
+    await expect(stake.connect(addr1).addWhiteList(token.address)).to.be.revertedWith("Caller is not a owner");
+  });
+
+  it("it should revert if other than owner try to remove token in whiteList", async function () {
+    let {addr1, stake, token} = await loadFixture(deployFixture);
+    await stake.startStack(2);
+    await expect(stake.connect(addr1).removeWhiteList(token.address)).to.be.revertedWith("Caller is not a owner");
+  });
+
+  it("it should revert if other than owner try to start stake ", async function () {
+    let {addr1, stake, token} = await loadFixture(deployFixture);
+    await stake.startStack(2);
+    await expect(stake.connect(addr1).startStack(1)).to.be.revertedWith("Caller is not a owner");
+  });
+
+  it("it should revert if user stake not whitlisted token ", async function () {
+    let {addr1, stake, token} = await loadFixture(deployFixture);
+    await stake.startStack(2);
+    await expect(stake.connect(addr1).stake(100, token.address)).to.be.revertedWith("token is not white list token");
+  });
+
+  it("it should revert if non staking user try to withdraw", async function () {
+    let {addr1, stake} = await loadFixture(deployFixture);
+    await stake.startStack(2);
+    await expect(stake.connect(addr1).withdrawStakToken()).to.be.revertedWith("not have staked");
+  });
+
+  it("it should revert if other than owner try to call updateTimestamp", async function () {
+    let {addr1, stake} = await loadFixture(deployFixture);
+    await expect(stake.connect(addr1).updateTimestamp()).to.be.revertedWith("Caller is not a owner");
+  });
+
+  it("it should revert if owner try to call updateTimestamp before and after end time", async function () {
+    let {addr1, stake} = await loadFixture(deployFixture);
+    await stake.startStack(2);
+    const et = parseInt(await stake.end());
+    await time.increaseTo(et);
+    await expect(stake.updateTimestamp()).to.be.revertedWith("time is not equal to end");
+  });
+
+  it("it should revert if user try to stake after stake period", async function () {
+    let {addr1, stake, token} = await loadFixture(deployFixture);
+    await stake.startStack(2);
+    const et = parseInt(await stake.end());
+    await time.increaseTo(et+1);
+    await expect(stake.connect(addr1).stake(100, token.address)).to.be.revertedWith("stake time has ended");
   });
 
 });

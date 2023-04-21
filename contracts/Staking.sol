@@ -6,7 +6,6 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgradeable {
 
@@ -21,19 +20,13 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
     mapping (address => uint256) public reward;
     mapping (address => uint256) public balance;
     mapping (address => StakerDetail) staker;
-    mapping (address => bool) claim;
 
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     EnumerableSetUpgradeable.AddressSet private _whitList;
     
     /// @dev To check msg.sender able to stake or not
     modifier checkStakeTime(){
-        if(start !=0){
-            require(block.timestamp >= start, "stake time has not start");
-        }
-        else{
-            revert("stake has not start");
-        }
+        require(start != 0, "stake has not started");
         require(block.timestamp <= end, "stake time has ended");
         _;
     }
@@ -103,27 +96,16 @@ contract Staking is Initializable, Ownable2StepUpgradeable, AccessControlUpgrade
     /// @param _owner address of staker
     /// @return bool 
     function check(address _owner) external view returns(bool) {
-        require(block.timestamp > end, "stake period has not ended");
+        require(end != 0 && block.timestamp > end, "stake period has not ended");
         require(_whitList.contains(staker[_owner].ERC20Contract), "token is not white list token");
-        // require(claim[msg.sender], "user in not valid");
         return true;
     }
     
     /// @dev only owner can updatedBlockNumber when stake time has ended
     function updateTimestamp() external {
         require(hasRole(DEFAULT_ROLE, msg.sender), "Caller is not a owner");
-        require(block.timestamp >= end, "time is not equal to end");
+        require(block.timestamp == end, "time is not equal to end");
         updatedBlockNumber = block.number;
-    }
-
-    function verify(
-        bytes32[] memory proof,
-        address addr,
-        bytes32 root
-    ) public {
-        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(addr))));
-        require(MerkleProof.verify(proof, root, leaf), "Invalid proof");
-        claim[addr] = true;
     }
 
     function isWhitList(address value) external view returns(bool) {
